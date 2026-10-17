@@ -60,6 +60,11 @@ let task = 0;
 function text(message) {
 	return typeof message.content === "string" ? message.content : JSON.stringify(message.content);
 }
+const recapRequests = [];
+function lastToolResult(body) {
+	const last = [...body.messages].reverse().find((message) => message.role === "tool");
+	return last ? text(last) : "";
+}
 function lastUser(body) {
 	const last = [...body.messages].reverse().find((message) => message.role === "user");
 	return last ? text(last) : "";
@@ -82,12 +87,19 @@ function nextMove(body) {
 			briefs.push(user);
 			return { tool: { id: "call_propose", name: "propose_skill", args: { name: "deploy-staging", content: DRAFT } } };
 		}
+		// The tool result asks for a recap of the original task first: the stub follows it from the
+		// facts it was given, and the skill line comes last.
+		const result = lastToolResult(body);
+		recapRequests.push(result);
+		if (result.includes("A short recap of the task")) {
+			return { text: "Done: staging deploy finished.\nNot done / needs you: run the DB migration manually.\nNext: check /health." };
+		}
 		return { text: "Skill saved; run /reload to use it." };
 	}
 	// A task: five quick read-only steps, then an answer.
 	const done = new Set(all.match(new RegExp(`call_step_\\d+_${task}\\b`, "g")) ?? []).size;
 	if (done < 5) return { tool: { id: `call_step_${done}_${task}`, name: "bash", args: { command: `echo step ${done}` } } };
-	return { text: `Task ${task} finished.` };
+	return { text: `Task ${task} finished. The DB migration still needs a manual run.` };
 }
 
 function sse(response, delta, finish) {
@@ -134,7 +146,9 @@ const confirms = [];
 const editors = [];
 const notices = [];
 const extensionErrors = [];
+const assistantTexts = [];
 const settled = [];
+const customMessages = [];
 const stderr = [];
 let finished = false;
 
@@ -159,6 +173,8 @@ child.stdout.on("data", (chunk) => {
 		try { event = JSON.parse(line); } catch { continue; }
 		if (event.type === "extension_error") extensionErrors.push(line.slice(0, 300));
 		if (event.type === "agent_settled") settled.push(event);
+		if (event.type === "message_end" && event.message?.role === "custom") customMessages.push(event.message);
+		if (event.type === "message_end" && event.message?.role === "assistant") assistantTexts.push(JSON.stringify(event.message.content));
 		if (event.type !== "extension_ui_request") continue;
 		if (event.method === "notify") notices.push(String(event.message));
 		if (event.method === "confirm") {
@@ -195,7 +211,7 @@ function finish(code) {
 	child.kill("SIGKILL");
 	server.close();
 	rmSync(root, { recursive: true, force: true });
-	if (code === 0) console.log("e2e ok: task → judged → approved → brief with writing-great-skills → propose_skill → edited → saved; decline recorded");
+	if (code === 0) console.log("e2e ok: task → judged → approved → brief → propose_skill → edited → saved → agent recaps the ORIGINAL task → saved block after the recap, once; decline recorded");
 	process.exit(code);
 }
 const timer = setTimeout(() => fail("timed out"), TIMEOUT_MS);
@@ -220,8 +236,29 @@ try {
 	if (!saved.includes("(edited by the user)")) throw new Error("the user's edit was not saved");
 	if (!saved.startsWith("---\nname: deploy-staging")) throw new Error("saved skill lost its frontmatter");
 
+	// The recap: the agent was asked to restate the original task, with the facts it kept, and
+	// the "saved" block is shown only after that recap.
+	await waitUntil(() => customMessages.some((message) => message.customType === "auto-skill-saved"), "the saved block", 20_000);
+	const recapRequest = recapRequests.find((request) => request.includes("A short recap of the task"));
+	if (!recapRequest) throw new Error("the agent was never asked to recap the original task");
+	if (!recapRequest.includes("The DB migration still needs a manual run")) throw new Error("the recap request lost the original final answer");
+	if (!recapRequest.includes("deploy feat/x to staging")) throw new Error("the recap request lost the original request");
+	if (recapRequest.includes("REFERENCE-MARKER-7f3a")) throw new Error("the skill reference leaked into the recap request");
+	const blocks = customMessages.filter((message) => message.customType === "auto-skill-saved");
+	if (blocks.length !== 1) throw new Error(`expected the saved block once, saw ${blocks.length}`);
+	const blockText = typeof blocks[0].content === "string" ? blocks[0].content : JSON.stringify(blocks[0].content);
+	if (!/Skill "deploy-staging" created/.test(blockText) || !/Run \/reload to use it\./.test(blockText)) throw new Error(`saved block: ${blockText}`);
+	const recapIndex = assistantTexts.findIndex((entry) => entry.includes("Not done / needs you"));
+	if (recapIndex < 0) throw new Error("no recap from the agent");
+	if (/Run \/reload/.test(assistantTexts[recapIndex] ?? "")) throw new Error("the agent repeated the reload notice that the extension prints");
+	if (!/Do not mention the skill or \/reload/.test(recapRequest)) throw new Error("the agent was not told to leave the notice to the extension");
+	if (notices.some((notice) => /Run \/reload/.test(notice))) throw new Error("a reload notice came before the recap");
+	// Nothing else is judged after the recap: still exactly one judge call.
+	await sleep(1000);
+	if (judged.length !== 1) throw new Error(`the recap run was judged again: ${judged.length} judge calls`);
+
 	// Run 2: decline.
-	await sleep(1500);
+	await sleep(500);
 	confirmAnswer = false;
 	task = 2;
 	const confirmsBefore = confirms.length;

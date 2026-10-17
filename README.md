@@ -18,6 +18,13 @@ pi install npm:@fahrizkyputra/pi-auto-skill
 4. On **Yes**, the agent in your session writes the skill from the task it just finished, following writing-great-skills: a reusable procedure, with values that change between runs (branches, IDs, versions) turned into named inputs.
 5. The draft opens in an **editor**. Edit it, then save to keep it or cancel to discard it. Nothing is written to disk before this point.
 6. On **No**, that name is never suggested again in this project.
+7. After you save, the agent **restates your original task** — what is done, what is not done or needs you, and the next step (at most 8 lines, in the language you wrote in) — and the package puts a fixed block right under it:
+   ```
+   🧩 Skill "deploy-staging" created
+      .agents/skills/deploy-staging/SKILL.md
+      Run /reload to use it.
+   ```
+   Writing the skill pushes your task far up the chat, so without this you would have to scroll back to find what was left for you to do. The recap uses the original request, the files changed, and the agent's own final answer from the task, which the package kept; it does not describe the skill. If you type something else before the recap ends, the block is not shown late.
 
 The skill lands in the repo's skills folder: `.agents/skills/` if it exists, else `.pi/skills/` if it exists, else `.agents/skills/` (the Agent Skills location other agents read too). Run `/reload` to load it.
 

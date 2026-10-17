@@ -13,6 +13,7 @@ import {
 	type ReferenceSkill,
 	type TaskDigest,
 	type Verdict,
+	wrapUpMessage,
 } from "./prompts.ts";
 import { type ExistingSkill, validateSkill } from "./skill-files.ts";
 
@@ -52,10 +53,22 @@ export type Outcome =
 	| { kind: "briefed"; name: string; action: "create" | "update" }
 	| { kind: "error"; reason: string };
 
+/** A skill that was just saved, waiting to be announced under the agent's recap of the task. */
+export interface SavedSkill {
+	action: "create" | "update";
+	name: string;
+	path: string;
+}
+
 export class AutoSkillController {
 	private readonly host: AutoSkillHost;
-	/** The skill the agent was asked to write; propose_skill must match it. */
-	private pending: { name: string; action: "create" | "update" } | undefined;
+	/**
+	 * The skill the agent was asked to write; propose_skill must match it. `digest` is the task the
+	 * skill came from: the run that writes the skill replaces the extension's own digest, so the
+	 * task is kept here for the recap that follows.
+	 */
+	private pending: { name: string; action: "create" | "update"; digest: TaskDigest } | undefined;
+	private saved: SavedSkill | undefined;
 	/** Bumped by every user prompt, so a judgement that finishes late is dropped. */
 	private generation = 0;
 
@@ -65,6 +78,9 @@ export class AutoSkillController {
 
 	onUserPrompt(): void {
 		this.generation++;
+		// A skill saved just before: the user went on to something else, so its recap is no longer
+		// "the last thing in the chat" and the saved block would be out of place.
+		this.saved = undefined;
 	}
 
 	isWriting(): boolean {
@@ -130,7 +146,7 @@ export class AutoSkillController {
 		}
 
 		const existingContent = target ? host.readSkill(target.path) : undefined;
-		this.pending = { name: verdict.name, action: updating ? "update" : "create" };
+		this.pending = { name: verdict.name, action: updating ? "update" : "create", digest };
 		host.sendBrief(
 			authoringBrief({
 				verdict: { ...verdict, name: verdict.name },
@@ -180,11 +196,19 @@ export class AutoSkillController {
 
 		const path = host.saveSkill(proposal.name, edited);
 		this.pending = undefined;
-		host.notify(`auto-skill: saved ${path}. Run /reload to use it.`, "info");
+		// The "saved, run /reload" block is shown after the agent's recap (see takeSaved), not now.
+		this.saved = { action: pending.action, name: proposal.name, path };
 		return {
 			ok: true,
-			message: `Saved to ${path}${edited === proposal.content ? "" : " (with the user's edits)"}. Tell the user in one line, and that /reload loads it.`,
+			message: wrapUpMessage({ action: pending.action, name: proposal.name, path, edited: edited !== proposal.content, digest: pending.digest }),
 		};
+	}
+
+	/** The skill saved by the run that just ended, once; undefined when nothing was saved. */
+	takeSaved(): SavedSkill | undefined {
+		const saved = this.saved;
+		this.saved = undefined;
+		return saved;
 	}
 
 	/** The run that was meant to write the skill ended without a proposal. */
@@ -196,5 +220,6 @@ export class AutoSkillController {
 
 	cancelPending(): void {
 		this.pending = undefined;
+		this.saved = undefined;
 	}
 }

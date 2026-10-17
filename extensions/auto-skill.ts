@@ -5,14 +5,16 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { Type } from "typebox";
+import { Box, Text } from "@earendil-works/pi-tui";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { AutoSkillController, type AutoSkillHost } from "../src/controller.ts";
 import { readState, writeState } from "../src/project-state.ts";
-import { loadReferenceSkill, PROPOSE_TOOL, type TaskDigest } from "../src/prompts.ts";
+import { loadReferenceSkill, PROPOSE_TOOL, savedBlock, type TaskDigest } from "../src/prompts.ts";
 import { listProjectSkills, projectRoot, saveSkill, skillsDir } from "../src/skill-files.ts";
 
 /** Set for child processes so subagents never judge or propose skills. */
 const CHILD_FLAG = "PI_AUTO_SKILL_PARENT";
+const SAVED_TYPE = "auto-skill-saved";
 
 function textOf(content: unknown): string {
 	if (typeof content === "string") return content;
@@ -140,7 +142,24 @@ export default function autoSkillExtension(pi: ExtensionAPI) {
 			instance.onWritingRunEnded();
 			return;
 		}
+		// The run that saved the skill has ended: its recap of the task is now the last thing in
+		// the chat, so the fixed "saved, run /reload" block goes right under it. Never judged.
+		const saved = instance.takeSaved();
+		if (saved) {
+			const block = savedBlock(saved.action, saved.name, saved.path);
+			if (typeof pi.sendMessage === "function") pi.sendMessage({ customType: SAVED_TYPE, content: block, display: true });
+			else ctx.ui.notify(block, "info");
+			return;
+		}
 		await instance.onTaskFinished({ ...digest, steps: [...digest.steps], changedFiles: [...digest.changedFiles] }, toolCalls);
+	});
+
+	pi.registerMessageRenderer?.(SAVED_TYPE, (message, { outputPad }, theme) => {
+		const raw = typeof message.content === "string" ? message.content : textOf(message.content);
+		const [head = "", ...rest] = raw.split("\n");
+		const box = new Box(outputPad, 1, (line) => theme.bg("customMessageBg", line));
+		box.addChild(new Text([theme.fg("accent", theme.bold(head)), ...rest.map((line) => theme.fg("dim", line))].join("\n"), 0, 0));
+		return box;
 	});
 
 	pi.registerTool({
