@@ -89,3 +89,52 @@ test("an update brief includes the current version", () => {
 });
 
 void mkdirSync;
+
+// ---- wrap-up: the recap the agent writes once the skill is saved --------------------------------
+
+import { savedBlock, wrapUpMessage } from "../src/prompts.ts";
+
+const WRAP = { action: "create" as const, name: "deploy-staging", path: "/r/.agents/skills/deploy-staging/SKILL.md", edited: false, digest: DIGEST };
+
+test("wrap-up: the agent restates the task and leaves the skill notice to the extension", () => {
+	const message = wrapUpMessage(WRAP);
+	assert.match(message, /A short recap of the task/);
+	assert.match(message, /Do not mention the skill or \/reload: the extension shows that itself/);
+	assert.doesNotMatch(message, /Run \/reload to use it\./, "the notice is not asked from the agent twice");
+	assert.match(message, /Done: what was completed/);
+	assert.match(message, /Not done \/ needs you/);
+	assert.match(message, /Next: the one concrete next step/);
+	assert.match(message, /at most 8 lines/);
+	assert.match(message, /in the language the user wrote in/);
+	assert.match(message, /Do not describe the skill here/);
+	assert.match(message, /Do not invent work that was not done/);
+});
+
+test("wrap-up: carries the facts kept from the task, not the skill brief", () => {
+	const message = wrapUpMessage(WRAP);
+	assert.match(message, /The user's request: deploy branch feat\/x ke staging/);
+	assert.match(message, /Files changed: deploy\/staging\.env/);
+	assert.match(message, /> Staging sudah jalan di feat\/x\./);
+	assert.doesNotMatch(message, /REF|writing-great-skills reference/);
+});
+
+test("wrap-up: mentions the user's edits and clips long answers and file lists", () => {
+	const message = wrapUpMessage({ ...WRAP, action: "update", edited: true, digest: { ...DIGEST, finalAnswer: "x".repeat(5000), changedFiles: Array.from({ length: 20 }, (_, i) => `f${i}.ts`) } });
+	assert.match(message, /with the user's edits/);
+	assert.ok(message.length < 3000, "a long final answer is clipped");
+	assert.match(message, /f11\.ts, …/, "only the first 12 files are listed");
+});
+
+test("wrap-up: no final answer or files still gives a usable message", () => {
+	const message = wrapUpMessage({ ...WRAP, digest: { request: "", steps: [], changedFiles: [], finalAnswer: "" } });
+	assert.match(message, /\(not recorded\)/);
+	assert.doesNotMatch(message, /Files changed|final answer then/);
+});
+
+test("the saved block is fixed text with the name, the path, and /reload", () => {
+	assert.equal(
+		savedBlock("create", "deploy-staging", "/r/.agents/skills/deploy-staging/SKILL.md"),
+		'🧩 Skill "deploy-staging" created\n   /r/.agents/skills/deploy-staging/SKILL.md\n   Run /reload to use it.',
+	);
+	assert.match(savedBlock("update", "x", "/p"), /updated/);
+});

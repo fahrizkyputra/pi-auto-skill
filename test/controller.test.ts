@@ -139,6 +139,52 @@ test("proposal: invalid drafts go back to the agent, valid ones open the editor 
 	assert.equal(controller.isWriting(), false);
 });
 
+test("saving: the agent is told to recap the ORIGINAL task, and the notice waits for that recap", async () => {
+	const { controller, notices } = harness();
+	await controller.onTaskFinished({ ...DIGEST, finalAnswer: "Migrasi DB belum jalan, jalankan manual." }, 9);
+	const noticesBefore = notices.length;
+	const result = await controller.onProposal({ name: "deploy-staging", content: VALID("deploy-staging") });
+
+	assert.match(result.message, /A short recap of the task/);
+	assert.match(result.message, /Migrasi DB belum jalan/, "the original final answer travels with the recap request");
+	assert.match(result.message, /deploy feat\/x ke staging/);
+	assert.doesNotMatch(result.message, /Tell the user in one line/, "no more one-line wrap-up");
+	assert.equal(notices.length, noticesBefore, "no 'saved' notice before the agent's recap");
+
+	assert.deepEqual(controller.takeSaved(), { action: "create", name: "deploy-staging", path: "/repo/.agents/skills/deploy-staging/SKILL.md" });
+	assert.equal(controller.takeSaved(), undefined, "announced once");
+});
+
+test("discarding or an invalid edit leaves nothing to announce", async () => {
+	const discarded = harness({ edited: undefined });
+	await discarded.controller.onTaskFinished(DIGEST, 9);
+	await discarded.controller.onProposal({ name: "deploy-staging", content: VALID("deploy-staging") });
+	assert.equal(discarded.controller.takeSaved(), undefined);
+
+	const broken = harness({ edited: "oops" });
+	await broken.controller.onTaskFinished(DIGEST, 9);
+	await broken.controller.onProposal({ name: "deploy-staging", content: VALID("deploy-staging") });
+	assert.equal(broken.controller.takeSaved(), undefined);
+});
+
+test("moving on before the recap drops the pending announcement", async () => {
+	const { controller } = harness();
+	await controller.onTaskFinished(DIGEST, 9);
+	await controller.onProposal({ name: "deploy-staging", content: VALID("deploy-staging") });
+	controller.cancelPending();
+	assert.equal(controller.takeSaved(), undefined);
+});
+
+test("an update is announced as updated", async () => {
+	const { controller } = harness({
+		reply: '{"action":"update","name":"deploy-staging","reason":"new step"}',
+		skills: [{ name: "deploy-staging", description: "Deploy", path: "/repo/.agents/skills/deploy-staging/SKILL.md" }],
+	});
+	await controller.onTaskFinished(DIGEST, 9);
+	await controller.onProposal({ name: "deploy-staging", content: VALID("deploy-staging") });
+	assert.equal(controller.takeSaved()?.action, "update");
+});
+
 test("the user's edits are what gets saved", async () => {
 	const { controller, saved } = harness({ edited: (text) => text.replace("1. Deploy.", "1. Deploy carefully.") });
 	await controller.onTaskFinished(DIGEST, 9);

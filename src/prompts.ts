@@ -97,6 +97,57 @@ export function parseVerdict(reply: string, existing: readonly ExistingSkill[], 
 	return { action: exists ? "update" : "create", name, reason };
 }
 
+/** Longest piece of the original answer carried into the wrap-up. */
+const WRAP_UP_ANSWER_CHARS = 1500;
+const WRAP_UP_MAX_LINES = 8;
+
+export interface WrapUpInput {
+	action: "create" | "update";
+	name: string;
+	path: string;
+	edited: boolean;
+	/** The task the skill came from, so the agent can restate where it stands. */
+	digest: TaskDigest;
+}
+
+function clipText(text: string, limit: number): string {
+	const trimmed = text.trim();
+	return trimmed.length > limit ? `${trimmed.slice(0, limit)} …` : trimmed;
+}
+
+/**
+ * The tool result the agent sees once the skill is saved. The skill work pushed the real
+ * task far up the chat, so the agent restates it, from the facts the extension kept. It does
+ * not mention the skill: the extension prints that itself under the recap.
+ */
+export function wrapUpMessage(input: WrapUpInput): string {
+	// The skill's "saved, run /reload" notice is a fixed block shown under the recap (savedBlock),
+	// so the agent must not repeat it.
+	const { action, name, path, edited, digest } = input;
+	const files = digest.changedFiles.slice(0, 12);
+	return [
+		`Saved to ${path}${edited ? " (with the user's edits)" : ""}. The skill work is done; the user's real task is not forgotten.`,
+		"",
+		"The skill brief pushed the task far up the chat, so restate where the task stands. Write this now, in this order:",
+		`1. A short recap of the task from before the skill (at most ${WRAP_UP_MAX_LINES} lines), in the language the user wrote in, with these parts and only the ones that apply:`,
+		"   - Done: what was completed.",
+		"   - Not done / needs you: anything unfinished, any decision, check, or manual step the user still has to do.",
+		"   - Next: the one concrete next step.",
+		"   Use the facts below and your own memory of the task. Do not describe the skill here. Do not invent work that was not done.",
+		"2. Stop there. Do not mention the skill or /reload: the extension shows that itself, right under your recap.",
+		"",
+		"Facts kept from the task:",
+		`- The user's request: ${clipText(digest.request, 400) || "(not recorded)"}`,
+		...(files.length > 0 ? [`- Files changed: ${files.join(", ")}${digest.changedFiles.length > files.length ? ", …" : ""}`] : []),
+		...(digest.finalAnswer.trim() ? [`- Your final answer then:`, ...clipText(digest.finalAnswer, WRAP_UP_ANSWER_CHARS).split("\n").map((line) => `  > ${line}`)] : []),
+	].join("\n");
+}
+
+/** The fixed block shown in the chat once a skill is saved, under the agent's recap. */
+export function savedBlock(action: "create" | "update", name: string, path: string): string {
+	return [`🧩 Skill "${name}" ${action === "update" ? "updated" : "created"}`, `   ${path}`, "   Run /reload to use it."].join("\n");
+}
+
 export interface ReferenceSkill {
 	skillPath: string;
 	skill: string;

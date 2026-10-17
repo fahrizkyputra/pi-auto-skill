@@ -1,28 +1,60 @@
 {
   "name": "@fahrizkyputra/pi-auto-skill",
-  "version": "0.1.0",
-  "description": "After a task, propose turning it into a project skill: the agent drafts it with writing-great-skills, you review and edit it before it is saved to the repo.",
-  "keywords": ["pi-package", "pi-extension", "pi", "skill", "skills", "agent-skills", "automation", "project"],
+  "version": "0.2.0",
+  "description": "After a task, propose turning it into a project skill: the agent drafts it with writing-great-skills, you review and edit it before it is saved to the repo. Afterwards the agent restates your original task, so you never have to scroll back for what is left to do.",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi",
+    "skill",
+    "skills",
+    "agent-skills",
+    "automation",
+    "project"
+  ],
   "license": "MIT",
   "author": "Fahrizky Putra",
-  "repository": { "type": "git", "url": "git+https://github.com/fahrizkyputra/pi-auto-skill.git" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fahrizkyputra/pi-auto-skill.git"
+  },
   "homepage": "https://github.com/fahrizkyputra/pi-auto-skill#readme",
-  "bugs": { "url": "https://github.com/fahrizkyputra/pi-auto-skill/issues" },
+  "bugs": {
+    "url": "https://github.com/fahrizkyputra/pi-auto-skill/issues"
+  },
   "type": "module",
-  "pi": { "extensions": ["./extensions/auto-skill.ts"] },
-  "files": ["extensions", "src", "README.md", "LICENSE"],
+  "pi": {
+    "extensions": [
+      "./extensions/auto-skill.ts"
+    ]
+  },
+  "files": [
+    "extensions",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "test": "node --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
     "test:e2e": "node scripts/e2e-rpc.mjs"
   },
-  "peerDependencies": { "@earendil-works/pi-coding-agent": "*", "typebox": "*" },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*",
+    "@earendil-works/pi-tui": "*"
+  },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "*",
     "typebox": "*",
     "@types/node": "^22.0.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "@earendil-works/pi-tui": "*"
   },
-  "engines": { "node": ">=20" },
-  "publishConfig": { "access": "public" }
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
 }
