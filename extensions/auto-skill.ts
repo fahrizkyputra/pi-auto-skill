@@ -92,6 +92,9 @@ export default function autoSkillExtension(pi: ExtensionAPI) {
 
 	pi.on("before_agent_start", (event, ctx) => {
 		lastCtx = ctx;
+		// A run started by a custom message (pi.sendMessage with triggerTurn, e.g. a background-task or delegate
+		// notification) has messageType "custom" and no prompt: it is not a new request, so the digest stays.
+		if (typeof event.prompt !== "string") return;
 		const isBrief = event.prompt.startsWith("[auto-skill]");
 		if (!isBrief) {
 			controller?.onUserPrompt();
