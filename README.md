@@ -50,6 +50,25 @@ The package does not ship a skill-writing guide of its own. It reads **writing-g
 - Subagents and non-interactive runs (RPC without dialogs, print mode) are never judged, so no hidden model calls happen there.
 - Version 1 writes one `SKILL.md` per skill; supporting reference files are not generated.
 
+## jcode
+
+In [jcode](https://github.com/1jehuang/jcode) the package is a `/auto-skill` skill you call yourself. jcode has no hook that can start a turn after a task, so there is no automatic suggestion:
+
+```bash
+npx -y @fahrizkyputra/pi-auto-skill jcode install     # needs Node 22.18+
+```
+
+Then, after a task in jcode: `/auto-skill` or `/auto-skill deploy-staging`. The agent:
+
+1. picks a name for the procedure (or stops if the task was a one-off),
+2. runs `jcode-auto-skill brief <name>`, which prints the same authoring brief and writing-great-skills reference as in Pi, plus the existing skill when the name is taken,
+3. writes the draft to a scratch file under `~/.jcode/auto-skill-drafts/` and checks it with `jcode-auto-skill check <name>` (same validation as Pi),
+4. shows you the draft and waits; you ask for changes in the chat,
+5. on your yes, runs `jcode-auto-skill save <name>`, which writes `<repo>/.agents/skills/<name>/SKILL.md` (the old version goes to the trash),
+6. restates your original task.
+
+writing-great-skills is read from `~/.jcode/skills`, `~/.pi/agent/skills`, or `~/.agents/skills`, in that order. The installer copies the code to `~/.jcode/plugins/pi-auto-skill/`, links the skill into `~/.jcode/skills` (never over an existing folder), and links `jcode-auto-skill` into `~/.local/bin` when that is on `PATH` and free. Update: run the install line again. Remove: `jcode-auto-skill uninstall` (saved project skills are kept).
+
 ## Cost
 
 One small model call per task that meets the minimum bar, plus one agent turn when you accept a suggestion.
