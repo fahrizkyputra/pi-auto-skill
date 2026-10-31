@@ -1,6 +1,6 @@
 {
   "name": "@fahrizkyputra/pi-auto-skill",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "After a task, propose turning it into a project skill: the agent drafts it with writing-great-skills, you review and edit it before it is saved to the repo. Afterwards the agent restates your original task, so you never have to scroll back for what is left to do.",
   "keywords": [
     "pi-package",

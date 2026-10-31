@@ -175,3 +175,18 @@ test("if the user moves on before the recap, the saved block is not shown late",
 		else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
 	}
 });
+
+test("REGRESSION issue #1: a run started by a custom message (no prompt) does not throw and keeps the task", async () => {
+	delete process.env.PI_AUTO_SKILL_PARENT;
+	const { pi, hooks } = fakePi();
+	autoSkillExtension(pi);
+	const ctx: any = { cwd: process.cwd(), hasUI: true, ui: { notify: () => {} } };
+	const emit = async (name: string, event: Record<string, unknown> = {}) => {
+		for (const handler of hooks[name] ?? []) await handler({ type: name, ...event }, ctx);
+	};
+	await emit("session_start", { reason: "startup" });
+	await emit("before_agent_start", { prompt: "the real task" });
+	await emit("tool_call", { toolName: "bash", input: { command: "step 1" } });
+	// pi.sendMessage(..., { triggerTurn: true }): messageType "custom", no prompt.
+	await assert.doesNotReject(emit("before_agent_start", { messageType: "custom", message: { role: "custom", content: "background task done" } }));
+});
